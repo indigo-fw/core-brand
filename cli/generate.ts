@@ -19,12 +19,21 @@
  *
  * Validates the brand config first; errors helpfully if assets are missing
  * for the declared mode.
+ *
+ * Runs in Bun-direct context — loads the brand config via the deps file
+ * (which calls setBrandConfig) rather than through dynamic-import gymnastics.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { getBrandConfig } from '../lib/get-brand-config';
-import { formatValidationErrors, validateBrandConfig } from '../lib/validate-config';
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import {
+  getBrandConfig,
+  getBrandIconSvg,
+} from '../lib/get-brand-config';
+import {
+  formatValidationErrors,
+  validateBrandConfig,
+} from '../lib/validate-config';
 import type { BrandConfig, FaviconGlyph } from '../types/brand-config';
 
 const PROJECT_ROOT = process.cwd();
@@ -38,8 +47,20 @@ interface GenerateOptions {
 // ─── Public entry ────────────────────────────────────────────────────────────
 
 export async function generateBrandAssets(options: GenerateOptions = {}): Promise<void> {
-  console.log('▸ brand:generate — loading config from src/config/brand.ts');
-  const brand = await getBrandConfig();
+  console.log('▸ brand:generate — loading brand config');
+
+  // Load config via the deps file — same registration the runtime uses.
+  // This calls setBrandConfig(brand) which validates and caches.
+  try {
+    await import('@/config/deps/brand-deps');
+  } catch (err) {
+    console.error('✗ brand:generate failed — could not load @/config/deps/brand-deps');
+    console.error('  ', (err as Error).message);
+    console.error('  Hint: ensure src/config/deps/brand-deps.ts exists and src/config/brand.ts is valid.');
+    process.exit(1);
+  }
+
+  const brand = getBrandConfig();
   const validation = validateBrandConfig(brand);
 
   if (!validation.ok) {
@@ -50,14 +71,15 @@ export async function generateBrandAssets(options: GenerateOptions = {}): Promis
 
   if (options.check) {
     console.log('✓ Config valid. Would produce these assets (skipped, --check mode):');
-    listExpectedOutputs(brand).forEach((path) => console.log(`  ${path}`));
+    listExpectedOutputs().forEach((path) => console.log(`  ${path}`));
     return;
   }
 
   ensureDir(PUBLIC_DIR);
   ensureDir(resolve(PUBLIC_DIR, 'brand'));
 
-  await emitFavicons(brand);
+  await emitIconSvg(brand);
+  await emitRasterIcons(brand);
   await emitOgImages(brand);
   await emitWebManifest(brand);
   await emitPressKit(brand);
@@ -65,12 +87,12 @@ export async function generateBrandAssets(options: GenerateOptions = {}): Promis
   console.log('\n✓ brand:generate complete.\n');
   console.log('  Wire Next.js metadata in app/layout.tsx:');
   console.log('    import { getBrandMetadata } from "@/core-brand/lib/metadata";');
-  console.log('    export const metadata = await getBrandMetadata({ siteUrl: ... });');
+  console.log('    export const metadata = getBrandMetadata({ siteUrl: ... });');
 }
 
-// ─── Outputs ─────────────────────────────────────────────────────────────────
+// ─── Output list ─────────────────────────────────────────────────────────────
 
-function listExpectedOutputs(brand: BrandConfig): string[] {
+function listExpectedOutputs(): string[] {
   return [
     'public/favicon.ico',
     'public/icon.svg',
@@ -85,114 +107,129 @@ function listExpectedOutputs(brand: BrandConfig): string[] {
   ];
 }
 
-/**
- * Favicon family: pick a square source (SVG file or generated glyph), rasterize
- * to all required sizes, build the multi-res .ico.
- *
- * Implementation notes for the agent finishing this:
- *   - Use `@resvg/resvg-js` to render SVG → PNG (Bun-friendly, no headless browser)
- *   - For the glyph case (text-only mode), generate an SVG string from the glyph
- *     config and feed it through the same pipeline
- *   - `to-ico` accepts an array of PNG buffers (16, 32, 48) and produces an .ico
- *   - The Next.js `icon.svg` should be the source SVG passed through, not
- *     re-rasterized — Next.js will serve it for browsers that support SVG favicons
- */
-async function emitFavicons(brand: BrandConfig): Promise<void> {
-  const squareSvg = resolveFaviconSource(brand);
-  if (!squareSvg) {
-    throw new Error('brand:generate: no favicon source resolved (this should have been caught in validation)');
-  }
+// ─── Asset emitters ──────────────────────────────────────────────────────────
 
-  // Write the SVG icon (Next.js will use this for icon.svg)
-  writeFileSync(resolve(PUBLIC_DIR, 'icon.svg'), squareSvg, 'utf-8');
+/**
+ * Source SVG used for all favicon-family rasterization.
+ * Either the project's icon SVG (if mode supplies one), or a generated SVG
+ * from `faviconGlyph` (text-only mode, or override).
+ */
+function resolveFaviconSource(brand: BrandConfig): string {
+  // Prefer the icon SVG cached at setBrandConfig() time.
+  const cached = getBrandIconSvg();
+  if (cached) return cached;
+  // Fall back to rendering the favicon glyph as SVG.
+  if (brand.faviconGlyph) return renderGlyphSvg(brand.faviconGlyph);
+  throw new Error('brand:generate: no favicon source resolvable (validation should have caught this)');
+}
+
+/** Write the SVG icon (Next.js serves it for browsers that support SVG favicons). */
+async function emitIconSvg(brand: BrandConfig): Promise<void> {
+  const svg = resolveFaviconSource(brand);
+  writeFileSync(resolve(PUBLIC_DIR, 'icon.svg'), svg, 'utf-8');
   console.log('  ✓ public/icon.svg');
-
-  // TODO(agent): rasterize with @resvg/resvg-js to PNG buffers at sizes:
-  //   16x16, 32x32, 48x48 → to-ico → public/favicon.ico
-  //   192x192 → public/icon-192.png
-  //   512x512 → public/icon-512.png
-  //   180x180 → public/apple-icon.png
-  //
-  // Example sketch (uncomment and complete after installing deps):
-  //
-  //   const { Resvg } = await import('@resvg/resvg-js');
-  //   const toIco = (await import('to-ico')).default;
-  //   const sharp = (await import('sharp')).default;
-  //
-  //   const rasterize = (size: number): Buffer => {
-  //     const resvg = new Resvg(squareSvg, { fitTo: { mode: 'width', value: size } });
-  //     return Buffer.from(resvg.render().asPng());
-  //   };
-  //
-  //   const png16 = rasterize(16);
-  //   const png32 = rasterize(32);
-  //   const png48 = rasterize(48);
-  //   const ico = await toIco([png16, png32, png48]);
-  //   writeFileSync(resolve(PUBLIC_DIR, 'favicon.ico'), ico);
-  //
-  //   writeFileSync(resolve(PUBLIC_DIR, 'icon-192.png'), rasterize(192));
-  //   writeFileSync(resolve(PUBLIC_DIR, 'icon-512.png'), rasterize(512));
-  //   writeFileSync(resolve(PUBLIC_DIR, 'apple-icon.png'), rasterize(180));
-
-  console.warn('  ⚠ favicon.ico / PNG variants not generated — install sharp + @resvg/resvg-js + to-ico and uncomment the rasterization block in cli/generate.ts');
 }
 
 /**
- * Resolve the square SVG used as the favicon source.
- * Returns inline SVG string or null.
+ * Rasterize the favicon source to all required PNG sizes + build the
+ * multi-resolution `.ico`.
  *
- * Priority:
- *   1. brand.icon (if present and exists)
- *   2. brand.faviconGlyph (rendered as SVG square)
+ * Uses `@resvg/resvg-js` (Bun-friendly, no headless browser) for SVG → PNG
+ * and `to-ico` for the multi-res `.ico`. Both are optional — if not installed,
+ * the rasterization step is skipped with a clear warning.
  */
-function resolveFaviconSource(brand: BrandConfig): string | null {
-  if ('icon' in brand && brand.icon && existsSync(absPath(brand.icon))) {
-    return readFileSync(absPath(brand.icon), 'utf-8');
+async function emitRasterIcons(brand: BrandConfig): Promise<void> {
+  const resvgMod = await optionalImport('@resvg/resvg-js');
+  const toIcoMod = await optionalImport('to-ico');
+  if (!resvgMod || !toIcoMod) {
+    console.warn('  ⚠ favicon.ico / PNG variants skipped — install runtime deps:');
+    console.warn('    bun add sharp @resvg/resvg-js to-ico archiver satori');
+    return;
   }
-  if (brand.faviconGlyph) {
-    return renderGlyphSvg(brand.faviconGlyph);
-  }
-  return null;
-}
+  const Resvg = resvgMod.Resvg as new (
+    svg: string,
+    opts?: { fitTo?: { mode: 'width'; value: number } },
+  ) => { render: () => { asPng: () => Uint8Array } };
+  const toIco = (toIcoMod.default ?? toIcoMod) as (pngs: Buffer[]) => Promise<Buffer>;
 
-/** Render a faviconGlyph as a complete SVG string suitable for rasterization. */
-function renderGlyphSvg(glyph: FaviconGlyph): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="10" fill="${escapeAttr(glyph.bg)}"/>
-  <text x="32" y="32" text-anchor="middle" dominant-baseline="central"
-        font-family="${escapeAttr(glyph.font)}" font-weight="${glyph.weight}"
-        font-size="40" fill="${escapeAttr(glyph.fg)}">${escapeXml(glyph.text)}</text>
-</svg>`;
+  const svg = resolveFaviconSource(brand);
+
+  const rasterize = (size: number): Buffer => {
+    const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: size } });
+    return Buffer.from(resvg.render().asPng());
+  };
+
+  const png16 = rasterize(16);
+  const png32 = rasterize(32);
+  const png48 = rasterize(48);
+  const png180 = rasterize(180);
+  const png192 = rasterize(192);
+  const png512 = rasterize(512);
+
+  const ico = await toIco([png16, png32, png48]);
+  writeFileSync(resolve(PUBLIC_DIR, 'favicon.ico'), ico);
+  writeFileSync(resolve(PUBLIC_DIR, 'apple-icon.png'), png180);
+  writeFileSync(resolve(PUBLIC_DIR, 'icon-192.png'), png192);
+  writeFileSync(resolve(PUBLIC_DIR, 'icon-512.png'), png512);
+
+  console.log('  ✓ public/favicon.ico (16/32/48)');
+  console.log('  ✓ public/apple-icon.png (180×180)');
+  console.log('  ✓ public/icon-192.png');
+  console.log('  ✓ public/icon-512.png');
 }
 
 /**
  * OG / Twitter card composition.
  *
- * Implementation notes:
- *   - Use `satori` to compose JSX templates into SVG, then `@resvg/resvg-js` to
- *     rasterize to PNG at 1200×630 (OG) and 1200×675 (Twitter).
- *   - Three templates supported:
- *       'gradient-mark' — mark centered on a brand-gradient background + name + tagline
- *       'centered-lockup' — lockup centered on solid bg
- *       'custom-svg' — user provides ogImage.customSvg, we just rasterize it
+ * Three templates supported:
+ *   'gradient-mark'    — mark on brand-gradient background + name + tagline
+ *   'centered-lockup'  — lockup centered on solid bg
+ *   'custom-svg'       — user provides ogImage.customSvg, we just rasterize it
+ *
+ * NOTE — the satori composition is intentionally left as scaffolding here.
+ * Implementing it well requires bundled fonts (Inter/Manrope as TTF) and
+ * theme-aware JSX templates that read brand.colors. That's a bounded but
+ * non-trivial chunk — leaving as a TODO for the next pass rather than a
+ * weak first attempt.
  */
 async function emitOgImages(brand: BrandConfig): Promise<void> {
-  // TODO(agent): implement OG composition via satori + resvg-js.
-  // Sketch:
-  //
-  //   import satori from 'satori';
-  //   import { Resvg } from '@resvg/resvg-js';
-  //
-  //   const fontData = readFileSync(resolve(__dirname, '../assets/Inter-Bold.ttf'));
-  //   const ogSvg = await satori(
-  //     <div style={{ display: 'flex', ... }}>...{brand.name}...</div>,
-  //     { width: 1200, height: 630, fonts: [{ name: 'Inter', data: fontData, weight: 700 }] }
-  //   );
-  //   const png = new Resvg(ogSvg).render().asPng();
-  //   writeFileSync(resolve(PUBLIC_DIR, 'og-image.png'), png);
-  //   // Repeat for dark variant + Twitter card
+  const resvgMod = await optionalImport('@resvg/resvg-js');
+  if (!resvgMod) {
+    console.warn('  ⚠ og-image*.png skipped — install @resvg/resvg-js');
+    return;
+  }
+  const Resvg = resvgMod.Resvg as new (
+    svg: string,
+    opts?: { fitTo?: { mode: 'width'; value: number } },
+  ) => { render: () => { asPng: () => Uint8Array } };
 
-  console.warn('  ⚠ og-image.png / og-image-dark.png / twitter-card.png not generated — install satori + @resvg/resvg-js and complete emitOgImages()');
+  // For 'custom-svg' template the user already gave us a finished SVG — just rasterize.
+  if (brand.ogImage?.template === 'custom-svg' && brand.ogImage.customSvg) {
+    const customPath = resolve(PROJECT_ROOT, brand.ogImage.customSvg.replace(/^\//, ''));
+    if (!existsSync(customPath)) {
+      console.warn(`  ⚠ ogImage.customSvg not found at ${customPath}`);
+      return;
+    }
+    const fs = await import('node:fs');
+    const svg = fs.readFileSync(customPath, 'utf-8');
+    const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 1200 } });
+    const png = Buffer.from(resvg.render().asPng());
+    writeFileSync(resolve(PUBLIC_DIR, 'og-image.png'), png);
+    writeFileSync(resolve(PUBLIC_DIR, 'og-image-dark.png'), png);
+    writeFileSync(resolve(PUBLIC_DIR, 'twitter-card.png'), png);
+    console.log('  ✓ public/og-image.png (from custom SVG)');
+    console.log('  ✓ public/og-image-dark.png (from custom SVG)');
+    console.log('  ✓ public/twitter-card.png (from custom SVG)');
+    return;
+  }
+
+  // Templates 'gradient-mark' and 'centered-lockup' need satori composition.
+  // Implementing well requires bundled fonts + theme-aware JSX templates.
+  // Left as a follow-up — use ogImage.template = 'custom-svg' as a workaround.
+  console.warn('  ⚠ og-image*.png / twitter-card.png not generated.');
+  console.warn('    Templates "gradient-mark" / "centered-lockup" need satori composition');
+  console.warn('    + bundled fonts. Use ogImage.template = "custom-svg" with a ready');
+  console.warn('    SVG as a workaround until the satori implementation is added.');
 }
 
 /** Web App Manifest (PWA). */
@@ -217,28 +254,56 @@ async function emitWebManifest(brand: BrandConfig): Promise<void> {
   console.log('  ✓ public/site.webmanifest');
 }
 
-/** Press-kit zip bundle. */
+/**
+ * Press-kit zip bundle. Includes whatever assets currently exist in public/,
+ * plus a brand.json snapshot of the color palette for designers.
+ */
 async function emitPressKit(brand: BrandConfig): Promise<void> {
-  // TODO(agent): use `archiver` to zip:
-  //   - the source SVG(s)
-  //   - icon.svg, icon-192.png, icon-512.png, favicon.ico, apple-icon.png
-  //   - og-image.png, og-image-dark.png, twitter-card.png
-  //   - a brand.json with the color palette for designers
-  //
-  // Sketch:
-  //   import archiver from 'archiver';
-  //   import { createWriteStream } from 'node:fs';
-  //
-  //   const output = createWriteStream(resolve(PUBLIC_DIR, 'brand/press-kit.zip'));
-  //   const archive = archiver('zip', { zlib: { level: 9 } });
-  //   archive.pipe(output);
-  //   archive.file(resolve(PUBLIC_DIR, 'icon.svg'), { name: 'icon.svg' });
-  //   archive.file(resolve(PUBLIC_DIR, 'favicon.ico'), { name: 'favicon.ico' });
-  //   // ...
-  //   archive.append(JSON.stringify(brand.colors, null, 2), { name: 'colors.json' });
-  //   await archive.finalize();
+  const archiverMod = await optionalImport('archiver');
+  if (!archiverMod) {
+    console.warn('  ⚠ brand/press-kit.zip skipped — install archiver');
+    return;
+  }
+  const archiverFn = (archiverMod.default ?? archiverMod) as (
+    fmt: string,
+    opts?: { zlib?: { level: number } },
+  ) => {
+    pipe: (s: unknown) => void;
+    file: (path: string, opts: { name: string }) => void;
+    append: (data: string, opts: { name: string }) => void;
+    finalize: () => Promise<void>;
+  };
 
-  console.warn('  ⚠ brand/press-kit.zip not generated — install archiver and complete emitPressKit()');
+  const outPath = resolve(PUBLIC_DIR, 'brand/press-kit.zip');
+  const output = createWriteStream(outPath);
+  const archive = archiverFn('zip', { zlib: { level: 9 } });
+  archive.pipe(output);
+
+  const candidates = [
+    'icon.svg',
+    'favicon.ico',
+    'apple-icon.png',
+    'icon-192.png',
+    'icon-512.png',
+    'og-image.png',
+    'og-image-dark.png',
+    'twitter-card.png',
+    'site.webmanifest',
+  ];
+  for (const file of candidates) {
+    const filePath = resolve(PUBLIC_DIR, file);
+    if (existsSync(filePath)) archive.file(filePath, { name: file });
+  }
+  archive.append(JSON.stringify({ name: brand.name, colors: brand.colors }, null, 2), {
+    name: 'brand.json',
+  });
+
+  await archive.finalize();
+  await new Promise<void>((res, rej) => {
+    output.on('close', () => res());
+    output.on('error', rej);
+  });
+  console.log('  ✓ public/brand/press-kit.zip');
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
@@ -247,9 +312,14 @@ function ensureDir(path: string): void {
   if (!existsSync(path)) mkdirSync(path, { recursive: true });
 }
 
-function absPath(relativePath: string): string {
-  const cleaned = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
-  return resolve(PROJECT_ROOT, cleaned);
+/** Render a faviconGlyph as a complete SVG string suitable for rasterization. */
+function renderGlyphSvg(glyph: FaviconGlyph): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="10" fill="${escapeAttr(glyph.bg)}"/>
+  <text x="32" y="32" text-anchor="middle" dominant-baseline="central"
+        font-family="${escapeAttr(glyph.font)}" font-weight="${glyph.weight}"
+        font-size="40" fill="${escapeAttr(glyph.fg)}">${escapeXml(glyph.text)}</text>
+</svg>`;
 }
 
 function escapeAttr(s: string): string {
@@ -258,4 +328,20 @@ function escapeAttr(s: string): string {
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Dynamic import that bypasses TS module resolution at compile time.
+ * Returns the module or `null` if not installed. Used for the optional
+ * runtime deps (`sharp`, `@resvg/resvg-js`, etc.) so the CLI compiles
+ * even before they're installed.
+ */
+async function optionalImport(name: string): Promise<Record<string, unknown> | null> {
+  try {
+    // The indirection through a variable defeats TS's static module resolution.
+    const moduleName = name;
+    return (await import(moduleName)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }

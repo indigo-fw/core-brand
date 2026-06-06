@@ -1,8 +1,9 @@
 /**
  * <BrandLogo /> — the navbar/footer/email logo primitive.
  *
- * Reads the project's brand config and renders the requested variant,
- * with sensible fallbacks for any (mode × variant) combination.
+ * Reads the registered brand config (via DI — see `lib/get-brand-config.ts`)
+ * and renders the requested variant, with sensible fallbacks for any
+ * (mode × variant) combination.
  *
  * Examples:
  *
@@ -15,18 +16,21 @@
  *
  *                 | icon+text       | text-only         | lockup
  *   --------------+-----------------+-------------------+---------------------
- *   mark          | render `icon`   | render glyph sq   | render `icon` or glyph
+ *   mark          | render icon SVG | render glyph sq   | render icon or glyph
  *   wordmark      | render text     | render text       | render text (fallback)
- *   lockup        | icon + text     | wordmark only     | render `lockup` SVG
+ *   lockup        | icon + text     | wordmark only     | render lockup SVG
  *   auto          | lockup→mark @sm | wordmark always   | lockup always
  *
- * This is a SERVER component (no hooks) — it reads the brand config on the
- * server and emits inline SVG / text. No JS shipped to the client.
+ * This is a SERVER component — emits inline SVG / text on the server. No JS
+ * shipped to the client. SVG sources come from the in-memory cache populated
+ * by `setBrandConfig()` at boot; no filesystem reads at render time.
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { getBrandConfig } from '../lib/get-brand-config';
+import {
+  getBrandConfig,
+  getBrandIconSvg,
+  getBrandLockupSvg,
+} from '../lib/get-brand-config';
 import type { BrandConfig, FaviconGlyph, WordmarkConfig } from '../types/brand-config';
 
 export type BrandLogoVariant = 'mark' | 'wordmark' | 'lockup' | 'auto';
@@ -36,24 +40,21 @@ interface BrandLogoProps {
   className?: string;
 }
 
-const PROJECT_ROOT = process.cwd();
-
-function readSvg(relativePath: string): string {
-  const cleaned = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
-  try {
-    return readFileSync(resolve(PROJECT_ROOT, cleaned), 'utf-8');
-  } catch {
-    return '';
-  }
-}
-
 /**
- * Inline an SVG file as JSX-compatible markup. We strip the root <svg> element's
- * width/height so CSS (h-8 etc.) controls sizing, and inject the provided className.
+ * Inline an SVG string as JSX-compatible markup. We strip the root <svg>
+ * element's width/height so CSS (h-8 etc.) controls sizing, and inject the
+ * provided className.
  */
-function InlineSvg({ source, className, ariaLabel }: { source: string; className?: string; ariaLabel: string }) {
+function InlineSvg({
+  source,
+  className,
+  ariaLabel,
+}: {
+  source: string;
+  className?: string;
+  ariaLabel: string;
+}) {
   if (!source) return null;
-  // Strip width/height on root <svg> so CSS controls sizing; preserve viewBox.
   const cleaned = source
     .replace(/\swidth=["'][^"']*["']/i, '')
     .replace(/\sheight=["'][^"']*["']/i, '')
@@ -61,15 +62,18 @@ function InlineSvg({ source, className, ariaLabel }: { source: string; className
   return <span dangerouslySetInnerHTML={{ __html: cleaned }} />;
 }
 
-/** Render a faviconGlyph as an inline SVG square — used as a fallback mark. */
-function GlyphSquare({ glyph, className, ariaLabel }: { glyph: FaviconGlyph; className?: string; ariaLabel: string }) {
+/** Render a faviconGlyph as an inline SVG square. */
+function GlyphSquare({
+  glyph,
+  className,
+  ariaLabel,
+}: {
+  glyph: FaviconGlyph;
+  className?: string;
+  ariaLabel: string;
+}) {
   return (
-    <svg
-      viewBox="0 0 64 64"
-      className={className}
-      role="img"
-      aria-label={ariaLabel}
-    >
+    <svg viewBox="0 0 64 64" className={className} role="img" aria-label={ariaLabel}>
       <rect width="64" height="64" rx="10" fill={glyph.bg} />
       <text
         x="32"
@@ -88,7 +92,15 @@ function GlyphSquare({ glyph, className, ariaLabel }: { glyph: FaviconGlyph; cla
 }
 
 /** Render the live-text wordmark using the brand's wordmark font. */
-function Wordmark({ wordmark, fallbackText, className }: { wordmark: WordmarkConfig | undefined; fallbackText: string; className?: string }) {
+function Wordmark({
+  wordmark,
+  fallbackText,
+  className,
+}: {
+  wordmark: WordmarkConfig | undefined;
+  fallbackText: string;
+  className?: string;
+}) {
   const text = wordmark?.text ?? fallbackText;
   const style: React.CSSProperties = {};
   if (wordmark) {
@@ -109,14 +121,14 @@ function Wordmark({ wordmark, fallbackText, className }: { wordmark: WordmarkCon
 
 function renderMark(brand: BrandConfig, className?: string) {
   if (brand.mode === 'icon+text') {
-    return <InlineSvg source={readSvg(brand.icon)} className={className} ariaLabel={brand.name} />;
+    return <InlineSvg source={getBrandIconSvg()} className={className} ariaLabel={brand.name} />;
   }
   if (brand.mode === 'text-only') {
     return <GlyphSquare glyph={brand.faviconGlyph} className={className} ariaLabel={brand.name} />;
   }
   // lockup mode
-  if (brand.icon) {
-    return <InlineSvg source={readSvg(brand.icon)} className={className} ariaLabel={brand.name} />;
+  if (brand.icon && getBrandIconSvg()) {
+    return <InlineSvg source={getBrandIconSvg()} className={className} ariaLabel={brand.name} />;
   }
   if (brand.faviconGlyph) {
     return <GlyphSquare glyph={brand.faviconGlyph} className={className} ariaLabel={brand.name} />;
@@ -131,11 +143,14 @@ function renderWordmark(brand: BrandConfig, className?: string) {
 
 function renderLockup(brand: BrandConfig, className?: string) {
   if (brand.mode === 'lockup') {
-    return <InlineSvg source={readSvg(brand.lockup)} className={className} ariaLabel={brand.name} />;
+    return <InlineSvg source={getBrandLockupSvg()} className={className} ariaLabel={brand.name} />;
   }
   if (brand.mode === 'icon+text') {
     return (
-      <span className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5em' }}>
+      <span
+        className={className}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5em' }}
+      >
         {renderMark(brand, 'h-[1em] w-auto')}
         {renderWordmark(brand)}
       </span>
@@ -147,8 +162,8 @@ function renderLockup(brand: BrandConfig, className?: string) {
 
 // ─── Public component ───────────────────────────────────────────────────────
 
-export async function BrandLogo({ variant = 'lockup', className }: BrandLogoProps) {
-  const brand = await getBrandConfig();
+export function BrandLogo({ variant = 'lockup', className }: BrandLogoProps) {
+  const brand = getBrandConfig();
 
   if (variant === 'auto') {
     // Render lockup at sm+, mark on mobile, via CSS-only switch (no JS).

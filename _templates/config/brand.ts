@@ -42,8 +42,18 @@ export const brand: BrandConfig = {
   },
 
   // OG / Twitter card composition.
+  //
+  // Default = 'custom-svg' with a bundled 1200×630 SVG. The CLI rasterizes
+  // that file to og-image.png + og-image-dark.png + twitter-card.png with
+  // no composition work needed.
+  //
+  // Other templates ('gradient-mark', 'centered-lockup') compose at run time
+  // via satori — useful if you don't want to maintain a hand-authored SVG —
+  // but require bundled fonts. Stick with 'custom-svg' unless you have a
+  // reason to switch.
   ogImage: {
-    template: 'gradient-mark',
+    template: 'custom-svg',
+    customSvg: 'src/brand/og-image.svg',
     tagline: 'The AI-agent-driven SaaS framework for Next.js',
   },
 

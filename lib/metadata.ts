@@ -5,6 +5,8 @@
  * its own metadata export. Wires favicons, OG tags, Twitter card metadata
  * based on the generated files. Files are produced by `brand:generate` and
  * live in `public/` — Next.js serves them from `/`.
+ *
+ * Synchronous — relies on `setBrandConfig()` having been called at boot.
  */
 
 import type { Metadata } from 'next';
@@ -19,8 +21,8 @@ interface GetBrandMetadataOptions {
   description?: string;
 }
 
-export async function getBrandMetadata(options: GetBrandMetadataOptions = {}): Promise<Metadata> {
-  const brand = await getBrandConfig();
+export function getBrandMetadata(options: GetBrandMetadataOptions = {}): Metadata {
+  const brand = getBrandConfig();
 
   const titleTemplate = options.titleTemplate ?? `%s · ${brand.name}`;
   const description = options.description ?? brand.ogImage?.tagline ?? '';

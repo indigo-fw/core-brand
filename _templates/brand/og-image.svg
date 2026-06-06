@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- Default OG image — dark bg + brand mark + wordmark + tagline.
+       Replace with your own 1200×630 SVG; CLI rasterizes it to all three
+       social sizes (og light, og dark, twitter card) without composition. -->
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#1c1d28"/>
+
+  <!-- Subtle brand glow behind the mark -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="38%">
+      <stop offset="0%" stop-color="#5b59d4" stop-opacity="0.32"/>
+      <stop offset="60%" stop-color="#5b59d4" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#5b59d4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Mark — JigsawConverge fitted state, scaled and centered -->
+  <g transform="translate(420 105) scale(3.6)">
+    <!-- TL — dark gray. Slot right, tab down. -->
+    <path d="M 0 0 L 50 0 L 50 14 A 11 11 0 0 0 50 36 L 50 50 L 36 50 A 11 11 0 0 1 14 50 L 0 50 Z"
+          fill="#4b4e58"/>
+    <!-- BL — light gray. Slot top, tab right. -->
+    <path d="M 0 50 L 14 50 A 11 11 0 0 0 36 50 L 50 50 L 50 64 A 11 11 0 0 1 50 86 L 50 100 L 0 100 Z"
+          fill="#b0b3bd"/>
+    <!-- BR — medium gray. Tab up, slot left. -->
+    <path d="M 50 50 L 64 50 A 11 11 0 0 1 86 50 L 100 50 L 100 100 L 50 100 L 50 86 A 11 11 0 0 0 50 64 Z"
+          fill="#6e7280"/>
+    <!-- TR — brand. Tab left, slot bottom. -->
+    <path d="M 50 0 L 100 0 L 100 50 L 86 50 A 11 11 0 0 0 64 50 L 50 50 L 50 36 A 11 11 0 0 1 50 14 Z"
+          fill="#5b59d4"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="600" y="540" text-anchor="middle"
+        font-family="Manrope, Inter, system-ui, sans-serif" font-weight="800"
+        font-size="78" letter-spacing="-2" fill="#f3f4f8">indigo</text>
+
+  <!-- Tagline -->
+  <text x="600" y="585" text-anchor="middle"
+        font-family="Inter, system-ui, sans-serif" font-weight="500"
+        font-size="22" letter-spacing="0.3" fill="#9fa1ab">The AI-agent-driven SaaS framework for Next.js</text>
+</svg>
