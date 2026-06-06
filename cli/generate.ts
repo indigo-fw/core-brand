@@ -203,7 +203,9 @@ async function emitOgImages(brand: BrandConfig): Promise<void> {
     opts?: { fitTo?: { mode: 'width'; value: number } },
   ) => { render: () => { asPng: () => Uint8Array } };
 
-  // For 'custom-svg' template the user already gave us a finished SVG — just rasterize.
+  // For 'custom-svg' template the user already gave us a finished SVG — we
+  // do light template substitution (placeholders → brand.ts values) before
+  // rasterization. See `substituteOgPlaceholders()` below for the contract.
   if (brand.ogImage?.template === 'custom-svg' && brand.ogImage.customSvg) {
     const customPath = resolve(PROJECT_ROOT, brand.ogImage.customSvg.replace(/^\//, ''));
     if (!existsSync(customPath)) {
@@ -211,7 +213,8 @@ async function emitOgImages(brand: BrandConfig): Promise<void> {
       return;
     }
     const fs = await import('node:fs');
-    const svg = fs.readFileSync(customPath, 'utf-8');
+    const rawSvg = fs.readFileSync(customPath, 'utf-8');
+    const svg = substituteOgPlaceholders(rawSvg, brand);
     const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 1200 } });
     const png = Buffer.from(resvg.render().asPng());
     writeFileSync(resolve(PUBLIC_DIR, 'og-image.png'), png);
@@ -344,4 +347,31 @@ async function optionalImport(name: string): Promise<Record<string, unknown> | n
   } catch {
     return null;
   }
+}
+
+/**
+ * Substitute placeholder tokens in the user's OG SVG with values from
+ * `brand.ts`. Supported tokens (use `{{token}}` in the SVG):
+ *
+ *   {{name}}    — brand.name (the wordmark text)
+ *   {{tagline}} — brand.ogImage?.tagline (empty if not set)
+ *
+ * Brand colors are intentionally NOT substituted — the OG image is treated
+ * as a designed artifact, not a derived one. Edit the SVG file directly to
+ * change colors. (Adding color tokens would require OKLCH→hex conversion
+ * since @resvg/resvg-js doesn't fully support OKLCH; not worth the
+ * complexity for v1.)
+ *
+ * Exported for tests.
+ */
+export function substituteOgPlaceholders(svg: string, brand: BrandConfig): string {
+  const replacements: Record<string, string> = {
+    name: escapeXml(brand.name),
+    tagline: escapeXml(brand.ogImage?.tagline ?? ''),
+  };
+  return svg.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key: string) => {
+    // Unknown tokens pass through unchanged — lets the SVG carry literal
+    // `{{...}}` strings if someone has a weird reason to.
+    return key in replacements ? (replacements[key] as string) : match;
+  });
 }

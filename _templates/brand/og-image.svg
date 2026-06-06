@@ -32,13 +32,13 @@
           fill="#5b59d4"/>
   </g>
 
-  <!-- Wordmark -->
+  <!-- Wordmark — {{name}} is substituted from brand.ts at generate time -->
   <text x="600" y="540" text-anchor="middle"
         font-family="Manrope, Inter, system-ui, sans-serif" font-weight="800"
-        font-size="78" letter-spacing="-2" fill="#f3f4f8">indigo</text>
+        font-size="78" letter-spacing="-2" fill="#f3f4f8">{{name}}</text>
 
-  <!-- Tagline -->
+  <!-- Tagline — {{tagline}} is substituted from brand.ts at generate time -->
   <text x="600" y="585" text-anchor="middle"
         font-family="Inter, system-ui, sans-serif" font-weight="500"
-        font-size="22" letter-spacing="0.3" fill="#9fa1ab">The AI-agent-driven SaaS framework for Next.js</text>
+        font-size="22" letter-spacing="0.3" fill="#9fa1ab">{{tagline}}</text>
 </svg>

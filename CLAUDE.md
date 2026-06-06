@@ -87,6 +87,25 @@ bun run indigo brand:generate --check  # validate config + report what would cha
 
 Idempotent. Safe to re-run after editing `brand.ts`.
 
+### OG image template substitution
+
+For the `custom-svg` OG template, the CLI does light placeholder substitution
+before rasterization. Use these tokens in your SVG and the CLI will inject
+values from `brand.ts` at generate time:
+
+| Token         | Substituted with                       |
+|---------------|----------------------------------------|
+| `{{name}}`    | `brand.name`                           |
+| `{{tagline}}` | `brand.ogImage?.tagline ?? ''`         |
+
+Whitespace inside the braces is tolerated (`{{ name }}` works). Unknown tokens
+pass through unchanged. Values are XML-escaped.
+
+Brand colors are **intentionally not substituted** — the OG image is treated as
+a designed artifact, not a derived one. Edit `og-image.svg` directly to change
+colors. (OKLCH→hex conversion would be needed for full color substitution and
+@resvg/resvg-js doesn't fully support OKLCH yet; not worth the complexity for v1.)
+
 ## Component
 
 ```tsx
