@@ -54,7 +54,7 @@ export const brand: BrandConfig = {
   ogImage: {
     template: 'custom-svg',
     customSvg: 'src/brand/og-image.svg',
-    tagline: 'The AI-agent-driven SaaS framework for Next.js',
+    tagline: 'The agent-native SaaS framework for Next.js',
   },
 
   // /brand page configuration. /press redirects to whatever slug you choose.
