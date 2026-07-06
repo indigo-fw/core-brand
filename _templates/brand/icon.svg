@@ -1,20 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Indigo">
-  <!-- Default Indigo brand mark — the JigsawConverge fitted state.
-       Replace with your own square SVG; keep the 1:1 viewBox aspect. -->
+  <!-- Indigo brand mark — the Cycle: two arrows chasing CW around the
+       core (the self-improving loop). Standalone icon variant: the
+       white arrows sit on a brand-500 disc so the icon works on any
+       background (favicons, app tiles). Colors are baked hex — this
+       file is rasterized by `bun run indigo brand:generate`.
+       Source geometry: site/src/components/public/IndigoMarkCycle.tsx
+       (mark scaled 0.9 inside the disc for edge margin). -->
 
-  <!-- TL — dark gray. Slot right (inward), tab down. -->
-  <path d="M 0 0 L 50 0 L 50 14 A 11 11 0 0 0 50 36 L 50 50 L 36 50 A 11 11 0 0 1 14 50 L 0 50 Z"
-        fill="#4b4e58"/>
+  <!-- Brand disc — full-bleed circular envelope -->
+  <circle cx="50" cy="50" r="50" fill="#5d6aff"/>
 
-  <!-- BL — light gray. Slot top (inward), tab right. -->
-  <path d="M 0 50 L 14 50 A 11 11 0 0 0 36 50 L 50 50 L 50 64 A 11 11 0 0 1 50 86 L 50 100 L 0 100 Z"
-        fill="#b0b3bd"/>
+  <!-- Two white arrows, 180° apart, rotated 8.9° CW so each arrowhead
+       tip sits on the horizontal axis -->
+  <g transform="rotate(8.9 50 50) translate(5 5) scale(0.9)" fill="#ffffff">
+    <path d="M 8 50 A 42 42 0 0 1 85.23 27.13 L 90.26 23.86 L 86.27 44.34 L 65.94 39.65 L 70.97 36.39 A 25 25 0 0 0 25 50 L 16.52 44.10 Z"/>
+    <path d="M 8 50 A 42 42 0 0 1 85.23 27.13 L 90.26 23.86 L 86.27 44.34 L 65.94 39.65 L 70.97 36.39 A 25 25 0 0 0 25 50 L 16.52 44.10 Z"
+          transform="rotate(180 50 50)"/>
+  </g>
 
-  <!-- BR — medium gray. Tab up (outward), slot left (inward). -->
-  <path d="M 50 50 L 64 50 A 11 11 0 0 1 86 50 L 100 50 L 100 100 L 50 100 L 50 86 A 11 11 0 0 0 50 64 Z"
-        fill="#6e7280"/>
-
-  <!-- TR — brand color. Tab left (outward), slot bottom (inward). -->
-  <path d="M 50 0 L 100 0 L 100 50 L 86 50 A 11 11 0 0 0 64 50 L 50 50 L 50 36 A 11 11 0 0 1 50 14 Z"
-        fill="#5b59d4"/>
+  <!-- Core — darker brand shade -->
+  <circle cx="50" cy="50" r="13.5" fill="#3a36cb"/>
 </svg>
