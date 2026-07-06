@@ -20,8 +20,6 @@ bun run indigo brand:generate --check  # validate config + report what would cha
 
 Idempotent. Safe to re-run after editing `brand.ts`.
 
-File/component map: `bun run indigo map core-brand`. Surface: `module.config.ts`.
-
 ## Input modes
 
 Three modes — discriminated union in `types/brand-config.ts`, runtime-validated by `lib/validate-config.ts` (file existence, square check, per-mode rules; the CLI errors helpfully if assets are missing). Non-obvious required fields: `text-only` **requires `faviconGlyph`**; `lockup` **requires `icon` OR `faviconGlyph`** in addition to the lockup SVG.
