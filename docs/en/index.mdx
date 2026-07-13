@@ -12,8 +12,8 @@ description: Generate every derived brand asset — favicons, app icons, OG and 
 `core-brand` is the single source of truth for a project's visual identity. You
 edit **one** config file (`src/config/brand.ts`) and run **one** command; the
 module renders every favicon, app icon, social image and manifest your app
-needs, plus a `<BrandLogo>` React component and a public `/brand` press page.
-Generation is idempotent — safe to re-run whenever the config changes.
+needs, plus a `<BrandLogo>` React component. Generation is idempotent — safe to
+re-run whenever the config changes.
 
 ## What it does
 
@@ -21,17 +21,17 @@ Generation is idempotent — safe to re-run whenever the config changes.
   `favicon.ico` (multi-resolution 16/32/48), `icon.svg`, `icon-192.png` and
   `icon-512.png`, `apple-icon.png` (180×180), a `site.webmanifest`, and a
   `press-kit.zip` bundle of every variant.
-- **Open Graph & social images** — a light and dark `og-image.png` (1200×630)
-  and a `twitter-card.png` (1200×675), composed from a template
-  (`gradient-mark`, `centered-lockup`, or your own `custom-svg`).
+- **Open Graph & social images** — `og-image.png`, a dark variant (1200×630)
+  and a `twitter-card.png` (1200×675), rasterized from a `custom-svg` template
+  you supply, with `{{name}}` and `{{tagline}}` substitution (brand colors stay
+  hand-authored in the SVG). The auto-composed `gradient-mark` and
+  `centered-lockup` templates are on the roadmap — supply a custom SVG for now.
 - **Three brand modes** — `icon+text`, `text-only`, or `lockup`, expressed as a
   typed discriminated union so the compiler flags a config that's missing the
   assets its mode requires.
 - **`<BrandLogo>` component** — a server component the navbar, footer and emails
   consume; the `auto` variant renders the lockup on larger screens and the mark
   on mobile, with sensible fallbacks for every mode.
-- **Public `/brand` page** — an MDX-rendered press page for partners and
-  journalists, scaffolded into the project.
 - **Validation first** — `brand:generate --check` validates the config (file
   existence, square-source checks, per-mode rules) and reports what would change
   without writing anything.
@@ -63,7 +63,7 @@ export const brand: BrandConfig = {
   name: 'Indigo',
   icon: 'src/brand/icon.svg',     // square source
   colors: { brand: 'oklch(0.62 0.19 350)', bgLight: '#fff', bgDark: '#0b0b0f' },
-  ogImage: { template: 'gradient-mark', tagline: 'Describe it. Ship it.' },
+  ogImage: { template: 'custom-svg', customSvg: 'brand/og-image.svg' },
 };
 ```
 
@@ -88,9 +88,9 @@ import { BrandLogo } from '@/core-brand/components/BrandLogo';
 <BrandLogo variant="auto" className="h-8 w-auto" />
 ```
 
-Variants: `auto` (lockup on `sm+`, mark on mobile), `mark`, and `lockup`. Every
-mode × variant combination renders with a fallback — asking for `mark` in
-`text-only` mode renders the favicon glyph square.
+Variants: `auto` (lockup on `sm+`, mark on mobile), `mark`, `wordmark`, and
+`lockup`. Every mode × variant combination renders with a fallback — asking for
+`mark` in `text-only` mode renders the favicon glyph square.
 
 ## Out of scope
 
