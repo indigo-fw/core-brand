@@ -3,7 +3,7 @@
 ## Done
 
 ### Scaffolding + architecture
-- Module structure (`module.config.ts`, `register.ts`, `CLAUDE.md`)
+- Module structure (`module.config.ts`, `register.ts`, `AGENTS.md`)
 - `BrandConfig` discriminated union (TS-enforced required fields per mode)
 - Runtime validator (file existence, square-source check, per-mode rules)
 - **DI registration** via `setBrandConfig()` — no boundary violation. Project
@@ -73,7 +73,7 @@
   bundled fonts (Inter/Manrope TTF in `assets/`) and JSX templates that
   read `brand.colors`.
 - **`/brand` page** — register an MDX renderer for `type: brand-page`
-  (per `dev/src/app/CLAUDE.md` renderer pattern). Ship MDX components:
+  (per `dev/src/app/AGENTS.md` renderer pattern). Ship MDX components:
   `<BrandHero>`, `<BrandLogoDownloads>`, `<BrandPalette>`, `<BrandTypography>`,
   `<BrandMisuseGrid>`. Default content template at `_templates/content/brand.mdx`.
 - **`/press` → `/brand` redirect** in `src/proxy.ts`
